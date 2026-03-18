@@ -173,3 +173,6 @@ ENV/
 
 *.c
 .pytest_cache/
+
+# tmp
+/tmp/

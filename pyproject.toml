@@ -1,0 +1,49 @@
+[project]
+name = "pytdx"
+version = "1.72"
+description = "A Python Interface to TDX protocol"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "RainX", email = "i@rainx.cc" },
+    { name = "yutiansut" },
+]
+requires-python = ">=3.8"
+dependencies = [
+    "click",
+    "pandas",
+    "six",
+    "cryptography",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pylint",
+    "pypandoc",
+    "gitpython",
+]
+cython = [
+    "cython",
+]
+
+[project.scripts]
+hqget = "pytdx.bin.hqget:main"
+hqreader = "pytdx.bin.hqreader:main"
+get_tts = "pytdx.bin.get_tdx_trader_server:main"
+hqbenchmark = "pytdx.bin.hqbenchmark:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "pylint",
+    "pypandoc",
+    "gitpython",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
