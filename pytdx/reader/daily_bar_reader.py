@@ -84,6 +84,8 @@ class TdxDailyBarReader(BaseReader):
             row[3] * coefficient[0],
             row[4] * coefficient[0],
             row[5],
+            # volume unit follows pytdx reader convention:
+            # for A/BJ stocks coefficient[1] is 0.01, output is "手" (lot, 1 lot = 100 shares)
             row[6] * coefficient[1]
         )
         return new_row
@@ -125,6 +127,8 @@ class TdxDailyBarReader(BaseReader):
 
     SECURITY_EXCHANGE = ["sz", "sh", "bj"]
     SECURITY_TYPE = ["SH_A_STOCK", "SH_B_STOCK", "SH_INDEX", "SH_FUND", "SH_BOND", "SZ_A_STOCK", "SZ_B_STOCK", "SZ_INDEX", "SZ_FUND", "SZ_BOND", "BJ_STOCK"]
+    # coefficient[0] for price, coefficient[1] for volume.
+    # volume uses lot-oriented convention for stocks (0.01 => 手), index/fund keeps 1.0.
     SECURITY_COEFFICIENT = {"SH_A_STOCK": [0.01, 0.01], "SH_B_STOCK": [0.001, 0.01], "SH_INDEX": [0.01, 1.0], "SH_FUND": [0.001, 1.0], "SH_BOND": [0.001, 1.0], "SZ_A_STOCK": [0.01, 0.01], "SZ_B_STOCK": [0.01, 0.01], "SZ_INDEX": [0.01, 1.0], "SZ_FUND": [0.001, 0.01], "SZ_BOND": [0.001, 0.01], "BJ_STOCK": [0.01, 0.01]}
 
 if __name__ == '__main__':
