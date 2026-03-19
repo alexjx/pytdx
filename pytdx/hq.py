@@ -135,9 +135,14 @@ class TdxHq_API(BaseSocketClient):
 
     @update_last_ack_time
     def get_company_info_content(self, market, code, filename, start, length):
+        result = ""
         cmd = GetCompanyInfoContent(self.client, lock=self.lock)
-        cmd.setParams(market, code, filename, start, length)
-        return cmd.call_api()
+        while cmd.retry_send:
+            cmd.setParams(market, code, filename, start, length)
+            result += cmd.call_api()
+            start += 30720
+            length -= 30720
+        return result
 
     @update_last_ack_time
     def get_xdxr_info(self, market, code):

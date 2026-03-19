@@ -12,7 +12,7 @@ class GetCompanyInfoCategory(BaseParser):
         if type(code) is six.text_type:
             code = code.encode("utf-8")
 
-        pkg = bytearray.fromhex(u'0c 0f 10 9b 00 01 0e 00 0e 00 cf 02')
+        pkg = bytearray.fromhex(u'0c 02 10 9b 00 01 0e 00 0e 00 cf 02')
         pkg.extend(struct.pack(u"<H6sI", market, code, 0))
         self.send_pkg = pkg
     """
@@ -59,4 +59,3 @@ class GetCompanyInfoCategory(BaseParser):
             category.append(entry)
 
         return category
-

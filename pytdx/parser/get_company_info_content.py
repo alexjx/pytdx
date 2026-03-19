@@ -17,10 +17,10 @@ class GetCompanyInfoContent(BaseParser):
             filename = filename.encode("utf-8")
 
         if len(filename) != 80:
-            filename = filename.ljust(80, b'\x00')
+            filename = filename.ljust(78, b'\x00') + b'\x30\x30'
 
 
-        pkg = bytearray.fromhex(u'0c 07 10 9c 00 01 68 00 68 00 d0 02')
+        pkg = bytearray.fromhex(u'0c 03 10 9c 00 01 68 00 68 00 d0 02')
         pkg.extend(struct.pack(u"<H6sH80sIII", market, code, 0, filename, start, length, 0))
         self.send_pkg = pkg
 
@@ -28,5 +28,5 @@ class GetCompanyInfoContent(BaseParser):
         pos = 0
         _, length = struct.unpack(u'<10sH', body_buf[:12])
         pos += 12
-        content = body_buf[pos: pos+length]
-        return content.decode("gbk")
+        content = body_buf[pos: pos + length]
+        return content.decode("gbk", "ignore")
