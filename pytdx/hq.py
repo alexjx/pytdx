@@ -6,9 +6,11 @@
 
 
 import datetime
+import json
 import os
 import random
 import socket
+import struct
 import sys
 import threading
 
@@ -90,6 +92,136 @@ class TdxHq_API(BaseSocketClient):
         cmd = GetSecurityQuotesCmd(self.client, lock=self.lock)
         cmd.setParams(all_stock)
         return cmd.call_api()
+
+    @update_last_ack_time
+    def get_market_quotes_snapshot(self, all_stock=None, code_list=None, market_hint=None):
+        """
+        socket版行情快照封装（底层仍为 0x6320）
+
+        参数两种方式：
+        1. all_stock=[(market, code), ...]
+        2. code_list=['920088','513350', ...]  # 自动推断市场
+        """
+        if all_stock is None:
+            if not code_list:
+                return []
+            all_stock = [(_select_market_code(code), str(code))
+                         for code in code_list]
+
+        rows = self.get_security_quotes(all_stock) or []
+        if market_hint is not None:
+            rows = [r for r in rows if r.get("market") == market_hint]
+        if code_list:
+            keep = set([str(x) for x in code_list])
+            rows = [r for r in rows if r.get("code") in keep]
+        return rows
+
+    def _build_etf_panel_init_pkg(self, panel_path):
+        # 0x7c2c: init path, observed fixed body length 40
+        path40 = panel_path.encode("ascii")[:40]
+        path40 += b"\x00" * (40 - len(path40))
+        return bytearray.fromhex("0c012c7c00012a002a00c502") + path40
+
+    def _build_etf_panel_warmup_pkg(self, market, code):
+        # 0xc920: warmup quote request, template observed from capture
+        pkg = bytearray.fromhex(
+            "0c0320c908010f000f00470501000031353939313900000000")
+        pkg[17] = int(market) & 0xFF
+        code6 = str(code).encode("ascii", "ignore")[:6]
+        pkg[19:25] = code6 + b"\x00" * (6 - len(code6))
+        return pkg
+
+    def _build_etf_panel_pull_pkg(self, seq_index, offset, chunk_size, panel_path):
+        # 0x7d2c: chunk pull, observed fixed body length 300
+        path300 = panel_path.encode("ascii")[:300]
+        path300 += b"\x00" * (300 - len(path300))
+        head = struct.pack(
+            "<HHHHHHII",
+            0x020C + seq_index * 0x0100,
+            0x7D2C,
+            0x0100,
+            0x0136,
+            0x0136,
+            0x06B9,
+            offset,
+            chunk_size,
+        )
+        return head + path300
+
+    @update_last_ack_time
+    def get_etf_panel_table(self,
+                            panel_path="bi_diy/list/gxjty_etfjj101.jsn",
+                            warmup_stock=(TDXParams.MARKET_SZ, "159919"),
+                            chunk_size=30000,
+                            max_chunks=12,
+                            focus_codes=None):
+        """
+        socket版ETF面板表格拉取（实验）
+        时序：0x7c2c(init) -> 0xc920(warmup) -> 0x7d2c(offset分块)
+        """
+        blob = bytearray()
+        offsets = []
+
+        self.send_raw_pkg(self._build_etf_panel_init_pkg(panel_path))
+        if warmup_stock:
+            market, code = warmup_stock
+            self.send_raw_pkg(self._build_etf_panel_warmup_pkg(market, code))
+
+        for i in range(max_chunks):
+            offset = i * chunk_size
+            rsp = self.send_raw_pkg(self._build_etf_panel_pull_pkg(
+                i, offset, chunk_size, panel_path))
+            if not rsp or len(rsp) < 4:
+                break
+            got = struct.unpack("<I", rsp[:4])[0]
+            if got <= 0:
+                break
+            blob.extend(rsp[4:4 + got])
+            offsets.append(offset)
+            if got < chunk_size:
+                break
+
+        start = blob.find(b"{")
+        end = blob.rfind(b"}")
+        if start < 0 or end <= start:
+            return {
+                "columns": [],
+                "rows": [],
+                "offsets": offsets,
+                "incomplete": True,
+                "focus_rows": {},
+                "errors": ["cannot find JSON body in chunk stream"],
+            }
+
+        try:
+            obj = json.loads(blob[start:end + 1].decode("utf-8"))
+        except Exception as e:
+            return {
+                "columns": [],
+                "rows": [],
+                "offsets": offsets,
+                "incomplete": True,
+                "focus_rows": {},
+                "errors": ["json decode failed: {}".format(e)],
+            }
+
+        rows = obj.get("data", [])
+        focus_rows = {}
+        if focus_codes:
+            for code in focus_codes:
+                code = str(code)
+                hit = next((r for r in rows if len(r) > 0 and str(r[0]) == code), None)
+                if hit:
+                    focus_rows[code] = hit
+
+        return {
+            "columns": obj.get("colheader", []),
+            "rows": rows,
+            "offsets": offsets,
+            "incomplete": len(offsets) >= max_chunks and len(rows) > 0,
+            "focus_rows": focus_rows,
+            "errors": [],
+        }
 
     @update_last_ack_time
     def get_security_count(self, market):
@@ -210,23 +342,26 @@ class TdxHq_API(BaseSocketClient):
     def get_k_data(self, code, start_date, end_date):
         # 具体详情参见 https://github.com/rainx/pytdx/issues/5
         # 具体详情参见 https://github.com/rainx/pytdx/issues/21
-        def __select_market_code(code):
-            code = str(code)
-            if code[0] in ['5', '6', '9'] or code[:3] in ["009", "126", "110", "201", "202", "203", "204"]:
-                return 1
-            return 0
-        # 新版一劳永逸偷懒写法zzz
-        market_code = 1 if str(code)[0] == '6' else 0
         # https://github.com/rainx/pytdx/issues/33
-        # 0 - 深圳， 1 - 上海
+        # 0 - 深圳，1 - 上海，2 - 北京（北交所）
 
-        data = pd.concat([self.to_df(self.get_security_bars(9, __select_market_code(
+        data = pd.concat([self.to_df(self.get_security_bars(9, _select_market_code(
             code), code, (9 - i) * 800, 800)) for i in range(10)], axis=0)
 
         data = data.assign(date=data['datetime'].apply(lambda x: str(x)[0:10])).assign(code=str(code))\
             .set_index('date', drop=False, inplace=False)\
             .drop(['year', 'month', 'day', 'hour', 'minute', 'datetime'], axis=1)[start_date:end_date]
         return data.assign(date=data['date'].apply(lambda x: str(x)[0:10]))
+
+
+def _select_market_code(code):
+    code = str(code)
+    # 北交所代码：920xxx（存量兼容里 4/8 开头也按北京处理）
+    if code.startswith("92") or code[0] in ["4", "8"]:
+        return TDXParams.MARKET_BJ
+    if code[0] in ['5', '6', '9'] or code[:3] in ["009", "126", "110", "201", "202", "203", "204"]:
+        return TDXParams.MARKET_SH
+    return TDXParams.MARKET_SZ
 
 
 if __name__ == '__main__':

@@ -79,7 +79,7 @@ api.get_security_quotes([(0, &amp;apos;000001&amp;apos;), (1, &amp;apos;600300&a
 10 季K线
 11 年K线
 </code></pre></li>
-<li>market -&gt; 市场代码 0:深圳，1:上海
+<li>market -&gt; 市场代码 0:深圳，1:上海，2:北京（北交所）
 </li>
 <li>stockcode -&gt; 证券代码;
 </li>
@@ -97,7 +97,7 @@ api.get_security_bars(9,0, &amp;apos;000001&amp;apos;, 4, 3)
 
 ### 3 : 获取市场股票数量
 
-0 - 深圳， 1 - 上海
+0 - 深圳，1 - 上海，2 - 北京（北交所）
 
 ```
 api.get_security_count(0)
@@ -107,6 +107,8 @@ api.get_security_count(0)
 ### 4 : 获取股票列表
 
 参数：市场代码, 起始位置 如： 0,0 或 1,100
+
+注：`get_security_list(2, start)` 在多数主站当前会超时，建议北交所代码列表先走其他数据源，行情查询可继续使用 `market=2`。
 
 ```
 api.get_security_list(1, 0)
@@ -125,7 +127,7 @@ api.get_security_list(1, 0)
 10 季K线
 11 年K线
 </code></pre></li>
-<li>market -&gt; 市场代码 0:深圳，1:上海
+<li>market -&gt; 市场代码 0:深圳，1:上海，2:北京（北交所）
 </li>
 <li>stockcode -&gt; 证券代码;
 </li>
@@ -143,7 +145,7 @@ api.get_index_bars(9,1, &amp;apos;000001&amp;apos;, 1, 2)
 
 ### 6 : 查询分时行情
 
-参数：市场代码， 股票代码， 如： 0,000001 或 1,600300
+参数：市场代码， 股票代码， 如： 0,000001 或 1,600300 或 2,920088
 
 ```
 api.get_minute_time_data(1, &amp;apos;600300&amp;apos;)
@@ -152,14 +154,14 @@ api.get_minute_time_data(1, &amp;apos;600300&amp;apos;)
 
 ### 7 : 查询历史分时行情
 
-参数：市场代码， 股票代码，时间 如： 0,000001,20161209 或 1,600300,20161209
+参数：市场代码， 股票代码，时间 如： 0,000001,20161209 或 1,600300,20161209 或 2,920088,20161209
 
 ```
 api.get_history_minute_time_data(TDXParams.MARKET_SH, &amp;apos;600300&amp;apos;, 20161209)
 
 ```
 
-注意，在引入 TDXParams 之后， （`from pytdx.params import TDXParams`） 我们可以使用 TDXParams.MARKET_SH , TDXParams.MARKET_SZ 常量来代替 1 和 0 作为参数
+注意，在引入 TDXParams 之后， （`from pytdx.params import TDXParams`） 我们可以使用 TDXParams.MARKET_SH、TDXParams.MARKET_SZ、TDXParams.MARKET_BJ 常量来代替 1、0、2 作为参数
 
 ### 8 : 查询分笔成交
 
@@ -246,6 +248,36 @@ api.get_and_parse_block_info("block.dat")
 # 或者用我们定义好的params
 api.get_and_parse_block_info(TDXParams.BLOCK_SZ)
 
+```
+
+### 16 : socket版行情快照（0x6320封装）
+
+可用于统一按代码列表取快照，并可选按市场过滤。
+
+```
+# 方式1：传入(market, code)列表
+rows = api.get_market_quotes_snapshot(all_stock=[(2, '920088'), (1, '513350')])
+
+# 方式2：只传code，自动推断市场（92/4/8 -> BJ）
+rows = api.get_market_quotes_snapshot(code_list=['920088', '513350'], market_hint=2)
+```
+
+### 17 : socket版ETF面板表格（7c2c + c920 + 7d2c）
+
+该接口基于抓包逆向，当前属于实验接口，返回值为 dict：
+- `columns`: 表头
+- `rows`: 表格数据
+- `offsets`: 已拉取的分块offset
+- `incomplete`: 是否可能未拉全
+- `focus_rows`: 指定代码命中行
+- `errors`: 错误列表
+
+```
+panel = api.get_etf_panel_table(
+    panel_path="bi_diy/list/gxjty_etfjj101.jsn",
+    warmup_stock=(0, "159919"),
+    focus_codes=["513350", "159518", "515220"],
+)
 ```
 
 ## 多线程支持

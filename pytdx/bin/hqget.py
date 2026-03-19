@@ -74,9 +74,56 @@ def get_xdxr_info(params):
 def get_finance_info(params):
     return (api.get_finance_info(int(params[0]), params[1]))
 
+
+def get_market_quotes_snapshot(params):
+    """
+    参数:
+    - params[0]: stock对，格式 market:code|market:code ，如 2:920088|1:513350
+    - params[1]: (可选) market_hint
+    """
+    stocks = []
+    raw = params[0] if len(params) > 0 else ""
+    for pair in raw.split("|"):
+        pair = pair.strip()
+        if not pair:
+            continue
+        market, code = pair.split(":", 1)
+        stocks.append((int(market), code.strip()))
+    market_hint = int(params[1]) if len(params) > 1 and params[1] != "" else None
+    return api.get_market_quotes_snapshot(all_stock=stocks, market_hint=market_hint)
+
+
+def get_etf_panel_table(params):
+    """
+    参数:
+    - params[0]: panel_path, 默认 bi_diy/list/gxjty_etfjj101.jsn
+    - params[1]: warmup stock, 例如 0:159919
+    - params[2]: focus codes, 例如 513350|159518|515220
+    - params[3]: chunk_size, 默认 30000
+    - params[4]: max_chunks, 默认 12
+    """
+    panel_path = params[0] if len(params) > 0 and params[0] else "bi_diy/list/gxjty_etfjj101.jsn"
+    warmup = (TDXParams.MARKET_SZ, "159919")
+    if len(params) > 1 and params[1]:
+        wm, wc = params[1].split(":", 1)
+        warmup = (int(wm), wc.strip())
+    focus_codes = []
+    if len(params) > 2 and params[2]:
+        focus_codes = [x.strip() for x in params[2].split("|") if x.strip()]
+    chunk_size = int(params[3]) if len(params) > 3 and params[3] else 30000
+    max_chunks = int(params[4]) if len(params) > 4 and params[4] else 12
+
+    return api.get_etf_panel_table(
+        panel_path=panel_path,
+        warmup_stock=warmup,
+        chunk_size=chunk_size,
+        max_chunks=max_chunks,
+        focus_codes=focus_codes
+    )
+
 FUNCTION_LIST = OrderedDict(
     [
-        (1, ['获取股票行情', '参数：市场代码， 股票代码， 如： 0,000001 或 1,600300', get_security_quotes, '0,000001']),
+        (1, ['获取股票行情', '参数：市场代码， 股票代码， 如： 0,000001 或 1,600300 或 2,920088', get_security_quotes, '0,000001']),
         (2, ['获取k线', '''category-> K线种类
 0 5分钟K线 1 15分钟K线 2 30分钟K线 3 1小时K线 4 日K线
 5 周K线
@@ -85,14 +132,14 @@ FUNCTION_LIST = OrderedDict(
 8 1分钟K线 9 日K线
 10 季K线
 11 年K线
-market -> 市场代码 0:深圳，1:上海
+market -> 市场代码 0:深圳，1:上海，2:北京（北交所）
 stockcode -> 证券代码;
 start -> 指定的范围开始位置;
 count -> 用户要请求的 K 线数目，最大值为 800
 
 如： 9,0,000001,0,100''', get_security_bars, '9,0,000001,0,100']),
-        (3, ['获取市场股票数量', '参数：市场代码， 股票代码， 如： 0 或 1', get_security_count, '0']),
-        (4, ['获取股票列表', '参数：市场代码, 起始位置， 数量  如： 0,0 或 1,100', get_security_list, '0,0']),
+        (3, ['获取市场股票数量', '参数：市场代码， 股票代码， 如： 0 或 1 或 2', get_security_count, '0']),
+        (4, ['获取股票列表', '参数：市场代码, 起始位置， 数量  如： 0,0 或 1,100（market=2 当前大多节点会超时）', get_security_list, '0,0']),
         (5, ['获取指数k线', """参数:
 category-> K线种类
 0 5分钟K线 1 15分钟K线 2 30分钟K线 3 1小时K线 4 日K线
@@ -102,18 +149,20 @@ category-> K线种类
 8 1分钟K线 9 日K线
 10 季K线
 11 年K线
-market -> 市场代码 0:深圳，1:上海
+market -> 市场代码 0:深圳，1:上海，2:北京（北交所）
 stockCode -> 证券代码;
 start -> 指定的范围开始位置; count -> 用户要请求的 K 线数目
 如：9,1,000001,0,100""", get_index_bars, '9,1,000001,0,100']),
-        (6, ['查询分时行情', "参数：市场代码， 股票代码， 如： 0,000001 或 1,600300", get_minute_time_data, '0,000001']),
-        (7, ['查询历史分时行情', '参数：市场代码， 股票代码，时间 如： 0,000001,20161209 或 1,600300,20161209', get_history_minute_time_data, '0,000001,20161209']),
+        (6, ['查询分时行情', "参数：市场代码， 股票代码， 如： 0,000001 或 1,600300 或 2,920088", get_minute_time_data, '0,000001']),
+        (7, ['查询历史分时行情', '参数：市场代码， 股票代码，时间 如： 0,000001,20161209 或 1,600300,20161209 或 2,920088,20161209', get_history_minute_time_data, '0,000001,20161209']),
         (8, ['查询分笔成交', '参数：市场代码， 股票代码，起始位置， 数量 如： 0,000001,0,10', get_transaction_data, '0,000001,0,10']),
         (9, ['查询历史分笔成交', '参数：市场代码， 股票代码，起始位置，日期 数量 如： 0,000001,0,10,20170209', get_history_transaction_data, '0,000001,0,10,20170209']),
         (10, ['查询公司信息目录','参数：市场代码， 股票代码， 如： 0,000001 或 1,600300', get_company_info_category, '0,000001']),
         (11, ['读取公司信息详情', '参数：市场代码， 股票代码, 文件名, 起始位置， 数量, 如：0,000001,000001.txt,2054363,9221', get_company_info_content, '0,000001,000001.txt,0,10']),
         (12, ['读取除权除息信息', '参数：市场代码， 股票代码， 如： 0,000001 或 1,600300', get_xdxr_info, '0,000001']),
         (13, ['读取财务信息', '参数：市场代码， 股票代码， 如： 0,000001 或 1,600300', get_finance_info, '0,000001']),
+        (14, ['socket版行情快照', '参数：market:code|market:code, market_hint(可选) 例：2:920088|1:513350,2', get_market_quotes_snapshot, '2:920088|1:513350,']),
+        (15, ['socket版ETF面板表格', '参数：panel_path,warmup_market:warmup_code,focus1|focus2|focus3,chunk_size,max_chunks', get_etf_panel_table, 'bi_diy/list/gxjty_etfjj101.jsn,0:159919,513350|159518|515220,30000,12']),
     ]
 )
 

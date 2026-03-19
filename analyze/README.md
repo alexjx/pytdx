@@ -64,6 +64,19 @@ python tdx_pcap_analyzer.py capture.pcapng --export unknown_packets.json
 python tdx_pcap_analyzer.py capture.pcapng --hex
 ```
 
+### 6. 市场/列表流程实验分析
+
+用于分析“登录 -> 点击股票 -> 切北交所/ETF 列表”这类过程，输出请求时间线、命令分布、候选列表报文命令和解压预览。
+新版本会额外输出 `0x6320` 的实验解码结果（`market/code/price/open/high/low/vol`）。
+
+```bash
+# 推荐：临时依赖运行，不污染项目环境
+uv run --with scapy python analyze/market_flow_experiment.py /path/to/capture.pcapng
+
+# 可选参数
+uv run --with scapy python analyze/market_flow_experiment.py /path/to/capture.pcapng --port 7709 --request-limit 200
+```
+
 ## 作为 Python 模块使用
 
 ```python
@@ -85,6 +98,65 @@ unknown = [p for p in analyzer.packets
 for pkt in unknown:
     print(f"Unknown cmd: 0x{pkt.cmd:04x}")
     print(f"Payload: {pkt.payload[:32].hex()}")
+```
+
+### 实验 API（两个接口）
+
+```python
+from analyze import (
+    get_market_quotes_snapshot,
+    get_etf_panel_table,
+    export_etf_panel_table_csv,
+)
+
+pcap = "/path/to/bj2.pcapng"
+
+# API-1: 北交/面板行情快照（0x6320）
+snap = get_market_quotes_snapshot(pcap, market_hint=2)
+print("rows:", len(snap.rows))
+print("first:", snap.rows[0] if snap.rows else None)
+
+# API-2: ETF 面板表格（0x7d2c 分块拼接）
+table = get_etf_panel_table(pcap, focus_codes=["513350", "159518", "515220"])
+print("columns:", table.columns)
+print("focus:", table.focus_rows)
+
+export_etf_panel_table_csv(table, "etf_panel.csv")
+```
+
+### Socket 版实验 API（在线）
+
+```python
+from analyze import (
+    get_market_quotes_snapshot_socket,
+    get_etf_panel_table_socket,
+)
+
+# API-1: socket 0x6320
+snap = get_market_quotes_snapshot_socket(
+    host="47.100.132.162",
+    codes=["920088", "513350"],   # 自动推断 market
+)
+print(len(snap.rows), snap.errors)
+
+# API-2: socket 7c2c + c920 + 7d2c 分块
+table = get_etf_panel_table_socket(
+    host="47.100.132.162",
+    panel_path="bi_diy/list/gxjty_etfjj101.jsn",
+    warmup=(0, "159919"),
+    focus_codes=["513350", "159518", "515220"],
+)
+print(len(table.rows), table.focus_rows, table.errors)
+```
+
+命令行方式：
+
+```bash
+# 0x6320 行情
+python analyze/market_socket_experiment.py --host 47.100.132.162 quotes --codes 920088,513350
+
+# 7d2c ETF 面板
+python analyze/market_socket_experiment.py --host 47.100.132.162 etf --export-csv analyze/etf_socket.csv
 ```
 
 ## 抓包指南

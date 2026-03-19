@@ -117,13 +117,15 @@ class TdxDailyBarReader(BaseReader):
                 return "SH_FUND"
             elif code_head in ["01", "10", "11", "12", "13", "14", "20"]:
                 return "SH_BOND"
+        elif exchange == self.SECURITY_EXCHANGE[2]:
+            return "BJ_STOCK"
         else:
             print("Unknown security exchange !\n")
             raise NotImplementedError
 
-    SECURITY_EXCHANGE = ["sz", "sh"]
-    SECURITY_TYPE = ["SH_A_STOCK", "SH_B_STOCK", "SH_INDEX", "SH_FUND", "SH_BOND", "SZ_A_STOCK", "SZ_B_STOCK", "SZ_INDEX", "SZ_FUND", "SZ_BOND"]
-    SECURITY_COEFFICIENT = {"SH_A_STOCK": [0.01, 0.01], "SH_B_STOCK": [0.001, 0.01], "SH_INDEX": [0.01, 1.0], "SH_FUND": [0.001, 1.0], "SH_BOND": [0.001, 1.0], "SZ_A_STOCK": [0.01, 0.01], "SZ_B_STOCK": [0.01, 0.01], "SZ_INDEX": [0.01, 1.0], "SZ_FUND": [0.001, 0.01], "SZ_BOND": [0.001, 0.01]}
+    SECURITY_EXCHANGE = ["sz", "sh", "bj"]
+    SECURITY_TYPE = ["SH_A_STOCK", "SH_B_STOCK", "SH_INDEX", "SH_FUND", "SH_BOND", "SZ_A_STOCK", "SZ_B_STOCK", "SZ_INDEX", "SZ_FUND", "SZ_BOND", "BJ_STOCK"]
+    SECURITY_COEFFICIENT = {"SH_A_STOCK": [0.01, 0.01], "SH_B_STOCK": [0.001, 0.01], "SH_INDEX": [0.01, 1.0], "SH_FUND": [0.001, 1.0], "SH_BOND": [0.001, 1.0], "SZ_A_STOCK": [0.01, 0.01], "SZ_B_STOCK": [0.01, 0.01], "SZ_INDEX": [0.01, 1.0], "SZ_FUND": [0.001, 0.01], "SZ_BOND": [0.001, 0.01], "BJ_STOCK": [0.01, 0.01]}
 
 if __name__ == '__main__':
     tdx_reader = TdxDailyBarReader('/Users/rainx/tmp/vipdoc/')
@@ -135,4 +137,3 @@ if __name__ == '__main__':
         print(tdx_reader.get_df('000001', 'sz'))
     except TdxFileNotFoundException as e:
         pass
-

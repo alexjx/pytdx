@@ -10,7 +10,7 @@ class GetHistoryMinuteTimeData(BaseParser):
 
     def setParams(self, market, code, date):
         """
-        :param market: 0/1
+        :param market: 0/1/2
         :param code: '000001'
         :param date: 20161201  类似这样的整型
         :return:
