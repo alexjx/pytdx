@@ -8,6 +8,7 @@ import six
 
 
 class GetSecurityQuotesCmd(BaseParser):
+    _ZERO_EPSILON = 1e-8
 
     def setParams(self, all_stock):
         """
@@ -126,6 +127,7 @@ class GetSecurityQuotesCmd(BaseParser):
                 "<hH", body_buf[pos: pos + 4])
             pos += 4
 
+            servertime = self._format_time('%s' % reversed_bytes0)
             one_stock = OrderedDict([
                 ("market", market),
                 ("code", code.decode("utf-8")),
@@ -135,7 +137,7 @@ class GetSecurityQuotesCmd(BaseParser):
                 ("open", self._cal_price(price, open_diff)),
                 ("high", self._cal_price(price, high_diff)),
                 ("low", self._cal_price(price, low_diff)),
-                ("servertime", self._format_time('%s' % reversed_bytes0)),
+                ("servertime", servertime),
                 ("reversed_bytes0", reversed_bytes0),
                 ("reversed_bytes1", reversed_bytes1),
                 ("vol", vol),
@@ -173,11 +175,44 @@ class GetSecurityQuotesCmd(BaseParser):
                 ("reversed_bytes9", reversed_bytes9/100.0),  # 涨速
                 ("active2", active2)
             ])
+            if servertime == "0:00:00.000" and self._is_placeholder_quote_payload(one_stock):
+                raise ValueError("invalid placeholder quote payload")
             stocks.append(one_stock)
         return stocks
 
     def _cal_price(self, base_p, diff):
         return float(base_p + diff)/100
+
+    def _is_placeholder_quote_payload(self, row):
+        """
+        Identify malformed placeholder payload that appears when server rejects quotes.
+        Typical signature:
+        - code defaults to an unrelated value (e.g. 600839)
+        - all core quote fields are zero
+        - active flags are zero
+        """
+        zero_fields = (
+            "price",
+            "last_close",
+            "open",
+            "high",
+            "low",
+            "vol",
+            "cur_vol",
+            "amount",
+            "s_vol",
+            "b_vol",
+        )
+
+        for name in zero_fields:
+            value = row.get(name)
+            try:
+                if abs(float(value or 0.0)) > self._ZERO_EPSILON:
+                    return False
+            except Exception:
+                return False
+
+        return int(row.get("active1") or 0) == 0 and int(row.get("active2") or 0) == 0
 
     def _format_time(self, time_stamp):
         """
