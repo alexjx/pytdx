@@ -1,220 +1,569 @@
+# 扩展行情接口 API（`pytdx.exhq.TdxExHq_API`）
 
-# 扩展行情接口API
+本文档采用统一结构：
 
-首先需要引入
+- 描述
+- 输入（表格）
+- 输出（表格）
+- 注意事项
+- 样例（可选）
 
-```
+## 快速开始
+
+```python
 from pytdx.exhq import TdxExHq_API
 
-```
-
-然后，创建对象
-
-```
 api = TdxExHq_API()
-
+with api.connect('61.152.107.141', 7727):
+    rows = api.get_markets()
 ```
 
-之后，通常是如下的格式
+## 通用约定
 
-```
-if api.connect(&amp;apos;61.152.107.141&amp;apos;, 7727):
-    # ... same codes...
-    api.disconnect()
+### 日期格式
 
-```
+| 参数 | 格式 | 示例 |
+| --- | --- | --- |
+| `date` | `YYYYMMDD` | `20260319` |
 
-当然，我们也支持with 语法,可以省略`disconnect()`语句
+### `to_df` 转换规则
 
-```
-with api.connect(&amp;apos;61.152.107.141&amp;apos;, 7727):
-    # some codes
+| 输入类型 | 输出 |
+| --- | --- |
+| `list` | `DataFrame(v)` |
+| `dict/OrderedDict` | `DataFrame([v])` |
+| 其它（如 `int/str`） | `DataFrame([{"value": v}])` |
 
-```
+### K 线周期（`category`）
 
-## api方法列表
+| 值 | 常量 | 含义 |
+| --- | --- | --- |
+| `0` | `KLINE_TYPE_5MIN` | 5 分钟 |
+| `1` | `KLINE_TYPE_15MIN` | 15 分钟 |
+| `2` | `KLINE_TYPE_30MIN` | 30 分钟 |
+| `3` | `KLINE_TYPE_1HOUR` | 1 小时 |
+| `4` | `KLINE_TYPE_DAILY` | 日线 |
+| `5` | `KLINE_TYPE_WEEKLY` | 周线 |
+| `6` | `KLINE_TYPE_MONTHLY` | 月线 |
+| `7` | `KLINE_TYPE_EXHQ_1MIN` | 扩展 1 分钟 |
+| `8` | `KLINE_TYPE_1MIN` | 1 分钟 |
+| `9` | `KLINE_TYPE_RI_K` | 日线（兼容） |
+| `10` | `KLINE_TYPE_3MONTH` | 季线 |
+| `11` | `KLINE_TYPE_YEARLY` | 年线 |
 
-### 参数一般性约定
+## API 总览
 
-一般来说，股票代码和文件名称使用字符串类型，其它参数都使用数值类型
+| API | 描述 | 输出类型 |
+| --- | --- | --- |
+| `get_markets` | 获取主站支持的扩展市场 | `list[OrderedDict]` |
+| `get_instrument_info` | 分页获取代码列表 | `list[OrderedDict]` |
+| `get_instrument_count` | 获取扩展市场总代码数量 | `int` |
+| `get_instrument_quote` | 获取单标的五档快照 | `list[OrderedDict]` |
+| `get_instrument_quote_list` | 按市场/品类批量获取行情 | `list[OrderedDict]` |
+| `get_minute_time_data` | 获取当日分时 | `list[OrderedDict]` |
+| `get_history_minute_time_data` | 获取历史分时 | `list[OrderedDict]` |
+| `get_instrument_bars` | 获取扩展市场 K 线 | `list[OrderedDict]` |
+| `get_transaction_data` | 获取当日分笔 | `list[OrderedDict]` |
+| `get_history_transaction_data` | 获取历史分笔 | `list[OrderedDict]` |
+| `get_history_instrument_bars_range` | 按区间获取历史 K 线 | `list[OrderedDict]` |
 
-### 1: 获取市场代码
+## 字段命名对照（交易语境）
 
-可以获取该api服务器可以使用的市场列表，类别等信息
+以下是文档中常见拼音/英文混合字段的推荐中文理解，便于和交易终端术语对齐。
 
-```
+### 通用盘口与量价
+
+| 字段 | 交易语义（建议中文） |
+| --- | --- |
+| `pre_close` | 昨收 |
+| `open` | 今开 |
+| `high` | 最高 |
+| `low` | 最低 |
+| `price` / `XianJia` / `MaiChu` | 最新价（现价） |
+| `avg_price` | 均价 |
+| `volume` / `trade` | 成交量 |
+| `amount` / `ZongJinE` | 成交额 |
+| `position` / `chicang` / `ChiCangLiang` | 持仓量 |
+| `open_interest` | 持仓量（分时口径） |
+| `zongliang` / `ZongLiang` | 总量 |
+| `xianliang` / `XianLiang` | 现量 |
+| `neipan` / `NeiPan` / `Nei` | 内盘 |
+| `waipan` / `WaiPan` / `Wai` | 外盘 |
+| `kaicang` / `KaiCang` | 开仓量/开仓相关字段 |
+| `zengcang` | 增仓 |
+| `BiShu` | 成交笔数（按品种口径） |
+| `HuoYueDu` | 活跃度 |
+| `ZuoShou` / `ZuoJie` | 昨收（结） |
+| `JinKai` | 今开 |
+| `ZuiGao` | 最高 |
+| `ZuiDi` | 最低 |
+
+### 买卖盘（档位）
+
+| 字段 | 交易语义（建议中文） |
+| --- | --- |
+| `bid1..bid5` | 买一到买五价 |
+| `bid_vol1..bid_vol5` | 买一到买五量 |
+| `ask1..ask5` | 卖一到卖五价 |
+| `ask_vol1..ask_vol5` | 卖一到卖五量 |
+| `MaiRuJia` | 买入价/买盘价（上下文相关） |
+| `MaiRuJia1..5` | 买一到买五价 |
+| `MaiRuLiang` / `MaiRuLiang1..5` | 买量/买一到买五量 |
+| `MaiChuJia` / `MaiChuJia1..5` | 卖价/卖一到卖五价 |
+| `MaiChuLiang` / `MaiChuLiang1..5` | 卖量/卖一到卖五量 |
+
+### 成交方向与性质
+
+| 字段 | 交易语义（建议中文） |
+| --- | --- |
+| `nature` | 原始成交性质编码 |
+| `nature_mark` | 成交性质主标记 |
+| `nature_value` | 成交性质附加值 |
+| `nature_name` | 成交性质中文（如多开、空平、B、S） |
+| `direction` | 方向归一值（买/卖/中性） |
+| `natrue_name` | `nature_name` 的兼容拼写字段 |
+
+---
+
+## 1) `get_markets`
+
+### 描述
+
+获取当前扩展行情主站支持的市场列表。
+
+### 输入
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| 无 | - | - | 无参数 |
+
+### 输出
+
+返回类型：`list[OrderedDict]`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `market` | `int` | 市场 ID |
+| `category` | `int` | 品类 ID |
+| `name` | `str` | 市场名称 |
+| `short_name` | `str` | 市场简称 |
+
+### 注意事项
+
+- 后续 `market` 参数建议都从本接口结果中获取。
+
+### 样例
+
+```python
 api.get_markets()
-
 ```
 
-返回结果 `api.to_df(api.get_markets())` 一般某个服务器返回的类型比较固定，该结果可以缓存到本地或者内存中。
+---
 
-```
-2017-07-31 21:22:06,067 - PYTDX - INFO - 获取市场代码
-    market  category    name short_name
-0        1         1     临时股         TP
-1        4        12  郑州商品期权         OZ
-2        5        12  大连商品期权         OD
-3        6        12  上海商品期权         OS
-4        8        12  上海个股期权         QQ
-5       27         5    香港指数         FH
-6       28         3    郑州商品         QZ
-7       29         3    大连商品         QD
-8       30         3    上海期货         QS
-9       31         2    香港主板         KH
-10      32         2    香港权证         KR
-11      33         8   开放式基金         FU
-12      34         9   货币型基金         FB
-13      35         8  招商理财产品         LC
-14      36         9  招商货币产品         LB
-15      37        11    国际指数         FW
-16      38        10  国内宏观指标         HG
-17      40        11   中国概念股         CH
-18      41        11  美股知名公司         MG
-19      43         1   B股转H股         HB
-20      44         1    股份转让         SB
-21      47         3    股指期货         CZ
-22      48         2   香港创业板         KG
-23      49         2  香港信托基金         KT
-24      54         6   国债预发行         GY
-25      60         3  主力期货合约         MA
-26      62         5    中证指数         ZZ
-27      71         2     港股通         GH
+## 2) `get_instrument_info`
 
-```
+### 描述
 
-### 2: 查询代码列表
+分页获取代码列表。
 
-参数， 起始位置， 获取数量
+### 输入
 
-```
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `start` | `int` | 是 | - | 起始偏移 |
+| `count` | `int` | 否 | `100` | 请求条数 |
+
+### 输出
+
+返回类型：`list[OrderedDict]`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `category` | `int` | 品类 ID |
+| `market` | `int` | 市场 ID |
+| `code` | `str` | 合约/证券代码 |
+| `name` | `str` | 名称 |
+| `desc` | `str` | 扩展描述 |
+
+### 注意事项
+
+- 建议先缓存本接口结果，再按需增量更新。
+
+### 样例
+
+```python
 api.get_instrument_info(0, 100)
-
 ```
 
-Demo: <img alt="get_list_demo" src="assets/pytdx_exhq-bf0d0.png"/>
+---
 
-### 3: 查询市场中商品数量
+## 3) `get_instrument_count`
 
-```
+### 描述
+
+获取扩展市场总代码数量。
+
+### 输入
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| 无 | - | - | 无参数 |
+
+### 输出
+
+返回类型：`int`
+
+| 值 | 类型 | 说明 |
+| --- | --- | --- |
+| 总数量 | `int` | 扩展市场可查询代码总数 |
+
+### 注意事项
+
+- 可结合 `get_instrument_info` 做分页上界控制。
+
+### 样例
+
+```python
 api.get_instrument_count()
-
 ```
 
-### 4: 查询五档行情
+---
 
-参数 市场ID，证券代码
+## 4) `get_instrument_quote`
 
-- 市场ID可以通过 `get_markets` 获得
+### 描述
 
-```
-api.get_instrument_quote(47, "IF1709")
+获取单标的五档快照。
 
-```
+### 输入
 
-### 5: 查询分时行情
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `market` | `int` | 是 | 市场 ID |
+| `code` | `str` | 是 | 合约/证券代码 |
 
-参数 市场ID，证券代码
+### 输出
 
-- 市场ID可以通过 `get_markets` 获得
+返回类型：`list[OrderedDict]`（通常长度为 1）
 
-```
-api.get_minute_time_data(47, "IF1709")
+| 字段组 | 代表字段 | 说明 |
+| --- | --- | --- |
+| 标识字段 | `market`, `code` | 市场与代码 |
+| 基础行情 | `pre_close`, `open`, `high`, `low`, `price` | 昨收/开高低现 |
+| 量仓字段 | `kaicang`, `zongliang`, `xianliang`, `neipan`, `waipan`, `chicang` | 开仓量/成交量/持仓等 |
+| 五档买盘 | `bid1..bid5`, `bid_vol1..bid_vol5` | 买价与买量 |
+| 五档卖盘 | `ask1..ask5`, `ask_vol1..ask_vol5` | 卖价与卖量 |
 
-```
+### 注意事项
 
-### 6: 查询历史分时行情
+- 返回是 `list`，不是单个 `dict`。
+- 拼音字段中文语义见上文“字段命名对照（交易语境）”。
 
-参数 市场ID，证券代码，日期
+### 样例
 
-- 市场ID可以通过 `get_markets` 获得
-- 日期格式 YYYYMMDD 如 20170811
-
-```
-api.get_history_minute_time_data(31, "00020", 20170811)
-
-```
-
-### 7: 查询k线数据
-
-参数： K线周期， 市场ID， 证券代码，起始位置， 数量
-
-- K线周期参考 `TDXParams`
-- 市场ID可以通过 `get_markets` 获得
-
-```
-api.get_instrument_bars(TDXParams.KLINE_TYPE_DAILY, 8, "10000843", 0, 100)
-
+```python
+api.get_instrument_quote(47, 'IFL0')
 ```
 
-### 8: 查询分笔成交
+---
 
-参数：市场ID，证券代码
+## 5) `get_instrument_quote_list`
 
-- 市场ID可以通过 `get_markets` 获得
+### 描述
 
-```
-api.get_transaction_data(31, "00020")
+按市场与品类批量获取行情列表。
 
-```
+### 输入
 
-注意，这个接口最多返回`1800`条记录, 如果有超过1800条记录的请求，我们有一个start 参数作为便宜量，可以取出超过1800条记录
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `market` | `int` | 是 | - | 市场 ID |
+| `category` | `int` | 是 | - | 品类 ID |
+| `start` | `int` | 否 | `0` | 起始偏移 |
+| `count` | `int` | 否 | `80` | 请求条数 |
 
-如期货的数据：这个接口可以取出1800条之前的记录，数量也是1800条
+### 输出
 
-```
-api.get_history_transaction_data(47, "IFL0", 20170810, start=1800)
+返回类型：`list[OrderedDict]`
 
-```
+| 场景 | 字段 |
+| --- | --- |
+| `category=2`（港股类） | `market, code, HuoYueDu, ZuoShou, JinKai, ZuiGao, ZuiDi, XianJia, MaiRuJia, ZongLiang, XianLiang, ZongJinE, Nei, Wai, MaiRuJia1..5, MaiRuLiang1..5, MaiChuJia1..5, MaiChuLiang1..5` |
+| `category=3`（期货类） | `market, code, BiShu, ZuoJie, JinKai, ZuiGao, ZuiDi, MaiChu, KaiCang, ZongLiang, XianLiang, ZongJinE, NeiPan, WaiPan, ChiCangLiang, MaiRuJia, MaiRuLiang, MaiChuJia, MaiChuLiang` |
 
-### 9: 查询历史分笔成交
+### 注意事项
 
-参数：市场ID，证券代码, 日期
+- 当前实现只支持 `category in [2, 3]`。
+- 字段中文语义见上文“字段命名对照（交易语境）”。
 
-- 市场ID可以通过 `get_markets` 获得
-- 日期格式 YYYYMMDD 如 20170810
+### 样例
 
-```
-api.get_history_transaction_data(31, "00020", 20170810)
-
-```
-
-## 多线程支持
-
-由于Python的特性，一般情况下，不太建议使用多线程代码，如果需要并发访问，建议使用多进程来实现，如果要使用多线程版本，请在初始化时设置multithread参数为True
-
-```
-api = TdxExHq_API(multithread=True)
-
+```python
+api.get_instrument_quote_list(29, 3, 0, 10)
 ```
 
-## 心跳包
+---
 
-由于长时间不与服务器交互，服务器将关闭连接，所以我们实现了心跳包的机制，可以通过
+## 6) `get_minute_time_data`
 
+### 描述
+
+获取当日分时。
+
+### 输入
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `market` | `int` | 是 | 市场 ID |
+| `code` | `str` | 是 | 合约/证券代码 |
+
+### 输出
+
+返回类型：`list[OrderedDict]`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `hour`, `minute` | `int` | 时间 |
+| `price` | `float` | 当前价 |
+| `avg_price` | `float` | 均价 |
+| `volume` | `int` | 成交量 |
+| `open_interest` | `int` | 持仓量/扩展量字段 |
+
+### 注意事项
+
+- 字段语义会因品种差异略有不同，尤其是 `open_interest`。
+- 拼音字段中文语义见上文“字段命名对照（交易语境）”。
+
+### 样例
+
+```python
+api.get_minute_time_data(47, 'IFL0')
 ```
-api = TdxExHq_API(heartbeat=True)
 
+---
+
+## 7) `get_history_minute_time_data`
+
+### 描述
+
+获取历史某日分时。
+
+### 输入
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `market` | `int` | 是 | 市场 ID |
+| `code` | `str` | 是 | 合约/证券代码 |
+| `date` | `int` | 是 | `YYYYMMDD` |
+
+### 输出
+
+返回类型：`list[OrderedDict]`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `hour`, `minute` | `int` | 时间 |
+| `price` | `float` | 当前价 |
+| `avg_price` | `float` | 均价 |
+| `volume` | `int` | 成交量 |
+| `open_interest` | `int` | 持仓量/扩展量字段 |
+
+### 注意事项
+
+- 无数据时返回空列表。
+
+### 样例
+
+```python
+api.get_history_minute_time_data(31, '00020', 20170811)
 ```
 
-设置心跳包，程序会启动一个心跳包发送线程，在空闲状态下隔一段时间发送一个心跳包，注意，打开heartbeat=True选项的同时会自动打开multithread=True
+---
 
-## 抛出异常 和 重连机制
+## 8) `get_instrument_bars`
 
-参考 [标准行情 pytdx.hq](pytdx_hq.html) 对应的章节
+### 描述
 
-## 获取流量统计信息
+获取扩展市场 K 线。
 
+### 输入
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `category` | `int` | 是 | - | K 线周期 |
+| `market` | `int` | 是 | - | 市场 ID |
+| `code` | `str` | 是 | - | 合约/证券代码 |
+| `start` | `int` | 否 | `0` | 起始偏移 |
+| `count` | `int` | 否 | `700` | 请求条数 |
+
+### 输出
+
+返回类型：`list[OrderedDict]`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `open`, `high`, `low`, `close` | `float` | OHLC |
+| `position` | `int` | 持仓 |
+| `trade` | `int` | 成交量 |
+| `price` | `float` | 价格字段（按品种解释） |
+| `amount` | `float` | 成交额 |
+| `year`, `month`, `day`, `hour`, `minute`, `datetime` | `int/str` | 时间 |
+
+### 注意事项
+
+- `count` 过大时建议分页拉取。
+
+### 样例
+
+```python
+from pytdx.params import TDXParams
+
+api.get_instrument_bars(TDXParams.KLINE_TYPE_DAILY, 31, '00020', 0, 100)
 ```
-In [12]: api.get_traffic_stats()
-Out[12]:
-{&amp;apos;first_pkg_send_time&amp;apos;: datetime.datetime(2017, 9, 13, 13, 42, 3, 596519),
- &amp;apos;recv_bytes_per_second&amp;apos;: 116.0,
- &amp;apos;recv_pkg_bytes&amp;apos;: 2759,
- &amp;apos;recv_pkg_num&amp;apos;: 18,
- &amp;apos;send_bytes_per_second&amp;apos;: 15.0,
- &amp;apos;send_pkg_bytes&amp;apos;: 368,
- &amp;apos;send_pkg_num&amp;apos;: 9,
- &amp;apos;total_seconds&amp;apos;: 23.716146}
 
+---
+
+## 9) `get_transaction_data`
+
+### 描述
+
+获取当日分笔成交。
+
+### 输入
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `market` | `int` | 是 | - | 市场 ID |
+| `code` | `str` | 是 | - | 合约/证券代码 |
+| `start` | `int` | 否 | `0` | 起始偏移 |
+| `count` | `int` | 否 | `1800` | 请求条数 |
+
+### 输出
+
+返回类型：`list[OrderedDict]`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `date` | `datetime` | 成交时间 |
+| `hour`, `minute`, `second` | `int` | 拆分时间 |
+| `price` | `int` | 成交价（原始单位） |
+| `volume` | `int` | 成交量 |
+| `zengcang` | `int` | 增仓 |
+| `nature` | `int` | 原始方向/性质标识 |
+| `nature_mark`, `nature_value` | `int` | `nature` 拆分值 |
+| `nature_name` | `str` | 可读方向（如 `多开/空平/B/S`） |
+| `direction` | `int` | 方向归一值（`1/-1/0`） |
+
+### 注意事项
+
+- 港股市场（如 `31/48`）会按 `B/S` 规则映射。
+- `nature*`、`direction` 字段建议结合“字段命名对照（交易语境）”阅读。
+
+### 样例
+
+```python
+api.get_transaction_data(31, '00020', 0, 1800)
+```
+
+---
+
+## 10) `get_history_transaction_data`
+
+### 描述
+
+获取历史分笔成交。
+
+### 输入
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| `market` | `int` | 是 | - | 市场 ID |
+| `code` | `str` | 是 | - | 合约/证券代码 |
+| `date` | `int` | 是 | - | `YYYYMMDD` |
+| `start` | `int` | 否 | `0` | 起始偏移 |
+| `count` | `int` | 否 | `1800` | 请求条数 |
+
+### 输出
+
+返回类型：`list[OrderedDict]`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `date` | `datetime` | 成交时间 |
+| `hour`, `minute` | `int` | 拆分时间 |
+| `price` | `int` | 成交价（原始单位） |
+| `volume` | `int` | 成交量 |
+| `zengcang` | `int` | 增仓 |
+| `nature` | `int` | 原始方向/性质标识 |
+| `direction` | `int` | 方向归一值（`1/-1/0`） |
+| `nature_name` | `str` | 可读方向 |
+| `natrue_name` | `str` | 兼容字段（历史拼写） |
+
+### 注意事项
+
+- `natrue_name` 为兼容保留字段，建议优先使用 `nature_name`。
+- 无数据时返回空列表。
+- `nature*`、`direction` 字段建议结合“字段命名对照（交易语境）”阅读。
+
+### 样例
+
+```python
+api.get_history_transaction_data(31, '00020', 20170811, 0, 1800)
+```
+
+---
+
+## 11) `get_history_instrument_bars_range`
+
+### 描述
+
+按日期区间获取历史 K 线。
+
+### 输入
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `market` | `int` | 是 | 市场 ID |
+| `code` | `str` | 是 | 合约/证券代码 |
+| `start` | `int` | 是 | 起始日期 `YYYYMMDD` |
+| `end` | `int` | 是 | 结束日期 `YYYYMMDD` |
+
+### 输出
+
+返回类型：`list[OrderedDict]`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `datetime` | `str` | 时间字符串 |
+| `year`, `month`, `day`, `hour`, `minute` | `int` | 拆分时间 |
+| `open`, `high`, `low`, `close` | `float` | OHLC |
+| `position` | `int` | 持仓 |
+| `trade` | `int` | 成交量 |
+| `settlementprice` | `float` | 结算价 |
+
+### 注意事项
+
+- 具体可用区间受服务端历史数据覆盖范围影响。
+
+### 样例
+
+```python
+api.get_history_instrument_bars_range(74, 'BABA', 20170613, 20170620)
+```
+
+---
+
+## 运行选项（非业务 API）
+
+| 选项 | 构造参数 | 说明 |
+| --- | --- | --- |
+| 多线程 | `multithread=True` | 并发请求时可用 |
+| 心跳 | `heartbeat=True` | 空闲保活，自动启用多线程 |
+| 异常模式 | `raise_exception=True` | 失败抛 `TdxConnectionError` / `TdxFunctionCallError` |
+| 自动重试 | `auto_retry=True` | 断连时按策略自动重连 |
+
+## 流量统计
+
+```python
+api.get_traffic_stats()
 ```
